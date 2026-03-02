@@ -1,103 +1,75 @@
-import Image from "next/image";
+import { getLeaderboardData } from "@/lib/orb";
+import { getCurrentWeekBounds, toDateString } from "@/lib/utils";
+import AwardsRow from "@/components/leaderboard/AwardsRow";
+import LeaderboardTable from "@/components/leaderboard/LeaderboardTable";
+import ProgressSection from "@/components/leaderboard/ProgressSection";
+import DateRangePicker from "@/components/leaderboard/DateRangePicker";
 
-export default function Home() {
+export const dynamic = "force-dynamic";
+
+export default async function Page({
+  searchParams,
+}: {
+  searchParams: Promise<{ start?: string; end?: string }>;
+}) {
+  const params = await searchParams;
+  const defaultWeek = getCurrentWeekBounds();
+
+  const weekStart = params.start
+    ? new Date(params.start + "T00:00:00Z")
+    : defaultWeek.start;
+  const weekEnd = params.end
+    ? new Date(params.end + "T00:00:00Z")
+    : defaultWeek.end;
+
+  const isCurrentWeek =
+    toDateString(weekStart) === toDateString(defaultWeek.start);
+
+  const data = await getLeaderboardData(weekStart, weekEnd);
+
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+    <div className="relative z-10 min-h-screen px-4 py-8 sm:px-8 max-w-3xl mx-auto">
+      {/* Header */}
+      <div className="mb-8">
+        <h1
+          className="font-playfair font-bold text-3xl sm:text-4xl mb-1"
+          style={{ color: "#1a1040" }}
+        >
+          AI Adoption Leaderboard
+        </h1>
+        <p className="text-sm" style={{ color: "#5a5070" }}>
+          Credits consumed · Powered by Orb
+        </p>
+      </div>
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
+      {/* Week navigation */}
+      <div className="flex items-center justify-between mb-6">
+        <DateRangePicker
+          startDate={toDateString(weekStart)}
+          endDate={toDateString(weekEnd)}
+          weekLabel={data.weekLabel}
+          isCurrentWeek={isCurrentWeek}
+        />
+      </div>
+
+      {/* Award cards */}
+      <div className="mb-6">
+        <AwardsRow awards={data.awards} />
+      </div>
+
+      {/* Leaderboard table */}
+      <div className="mb-6">
+        <h2
+          className="font-playfair font-semibold text-lg mb-3"
+          style={{ color: "#1a1040" }}
         >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+          This Week&apos;s Rankings
+        </h2>
+        <LeaderboardTable users={data.users} />
+      </div>
+
+      {/* Q1 progress */}
+      <ProgressSection q1Progress={data.q1Progress} />
     </div>
   );
 }
