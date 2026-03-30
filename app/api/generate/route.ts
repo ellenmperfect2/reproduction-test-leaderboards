@@ -32,41 +32,53 @@ export async function POST() {
     return NextResponse.json({ error: "ORB_API_KEY not set" }, { status: 500 });
 
   const orbClient = new Orb({ apiKey });
-  const ts = Math.floor(Date.now() / 1000);
   const authHeaders = {
     Authorization: `Bearer ${apiKey}`,
     "Content-Type": "application/json",
+    Accept: "application/json",
   };
 
   try {
-    // Fetch existing subscription to get customer ID
-    const subscription = await orbClient.subscriptions.fetch(SUBSCRIPTION_ID);
-    const customerId = subscription.customer.id;
-
-    // Create a new license type
-    const licenseRes = await fetch(`${ORB_BASE}/license_types`, {
-      method: "POST",
+    // Fetch the subscription (raw API for full plan/price details)
+    const subRes = await fetch(`${ORB_BASE}/subscriptions/${SUBSCRIPTION_ID}`, {
       headers: authHeaders,
-      body: JSON.stringify({ name: `Seat ${ts}`, grouping_key: "user_email" }),
     });
-    const licenseType = await licenseRes.json();
-    if (!licenseRes.ok || !licenseType.id)
+    const subData = await subRes.json();
+    if (!subRes.ok)
+      return NextResponse.json({ error: `Subscription fetch failed: ${JSON.stringify(subData)}` }, { status: 500 });
+
+    const customerId: string = subData.customer.id;
+
+    // Find the license type already configured on the plan's prices
+    let licenseTypeId: string | null = null;
+    let licenseGroupingKey = "user_email";
+
+    for (const price of subData.plan?.prices ?? []) {
+      const config = price.license_type_configuration;
+      if (config?.license_type_id) {
+        licenseTypeId = config.license_type_id;
+        licenseGroupingKey = config.license_grouping_key ?? "user_email";
+        break;
+      }
+    }
+
+    if (!licenseTypeId)
       return NextResponse.json(
-        { error: `License type creation failed: ${JSON.stringify(licenseType)}` },
+        { error: "No license type found on the subscription plan. Ensure the plan has a price with license_type_configuration." },
         { status: 500 }
       );
-    const licenseTypeId: string = licenseType.id;
 
-    // Users — different credits per week to produce visible rank changes
+    // Normal-sounding display names — used as external_license_id so they
+    // show up cleanly in the leaderboard
     const users = [
-      { email: "wile.e.coyote@acme.com",  thisWeek: 300000, lastWeek: 180000 },
-      { email: "bugs.bunny@acme.com",      thisWeek: 200022, lastWeek: 220000 },
-      { email: "elena.marchetti@acme.com", thisWeek: 123456, lastWeek:  90000 },
-      { email: "danny.phantom@acme.com",   thisWeek:  67000, lastWeek:  10000 },
-      { email: "road.runner@acme.com",     thisWeek:   5000, lastWeek:  80000 },
+      { name: "Elena Marchetti",  thisWeek: 300000, lastWeek: 180000 },
+      { name: "James Okafor",     thisWeek: 200022, lastWeek: 220000 },
+      { name: "Priya Suresh",     thisWeek: 123456, lastWeek:  90000 },
+      { name: "Tom Bauer",        thisWeek:  67000, lastWeek:  10000 },
+      { name: "Anika Johansson",  thisWeek:   5000, lastWeek:  80000 },
     ];
 
-    // Create one license per user (staggered to avoid rate limits)
+    // Create one license per user (staggered; ignore errors if already exists)
     for (let i = 0; i < users.length; i++) {
       if (i > 0) await new Promise((r) => setTimeout(r, 1000));
       const res = await fetch(`${ORB_BASE}/licenses`, {
@@ -75,23 +87,23 @@ export async function POST() {
         body: JSON.stringify({
           subscription_id: SUBSCRIPTION_ID,
           license_type_id: licenseTypeId,
-          external_license_id: users[i].email,
+          external_license_id: users[i].name,
         }),
       });
-      const license = await res.json();
-      if (!res.ok || !license.id)
-        console.error(`License creation failed for ${users[i].email}:`, license);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        console.warn(`License create for "${users[i].name}" (${res.status}):`, err);
+      }
     }
 
-    // ── This week's events ────────────────────────────────────────────────────
-    // Use now-minus-30s so the timestamp is safely in the past
+    // ── This week's events (now - 30s so timestamp is safely in the past) ────
     const thisWeekTs = new Date(Date.now() - 30_000).toISOString();
 
     const thisWeekEvents: Orb.EventIngestParams.Event[] = await Promise.all(
       users.map(async (user) => {
         const base = {
           event_name: "license_api_call",
-          properties: { user_email: user.email, credits: user.thisWeek },
+          properties: { [licenseGroupingKey]: user.name, credits: user.thisWeek },
           timestamp: thisWeekTs,
           customer_id: customerId,
         };
@@ -106,15 +118,14 @@ export async function POST() {
 
     // ── Last week's events via Backfill API ───────────────────────────────────
     const prevWeekStart = getWeekStart(1);
-    const prevWeekEnd = getWeekStart(0); // exclusive — start of this week
+    const prevWeekEnd = getWeekStart(0);
 
-    // Wednesday noon UTC of last week — safely within the backfill window
     const prevWeekWed = new Date(prevWeekStart);
     prevWeekWed.setUTCDate(prevWeekStart.getUTCDate() + 2);
     prevWeekWed.setUTCHours(12, 0, 0, 0);
     const prevWeekTs = prevWeekWed.toISOString();
 
-    // 1. Create backfill
+    // 1. Create backfill window
     const backfillRes = await fetch(`${ORB_BASE}/events/backfills`, {
       method: "POST",
       headers: authHeaders,
@@ -126,18 +137,14 @@ export async function POST() {
     });
     const backfill = await backfillRes.json();
     if (!backfillRes.ok || !backfill.id)
-      return NextResponse.json(
-        { error: `Backfill creation failed: ${JSON.stringify(backfill)}` },
-        { status: 500 }
-      );
-    const backfillId: string = backfill.id;
+      return NextResponse.json({ error: `Backfill creation failed: ${JSON.stringify(backfill)}` }, { status: 500 });
 
     // 2. Ingest last week's events under the backfill
     const prevWeekEvents = await Promise.all(
       users.map(async (user) => {
         const base = {
           event_name: "license_api_call",
-          properties: { user_email: user.email, credits: user.lastWeek },
+          properties: { [licenseGroupingKey]: user.name, credits: user.lastWeek },
           timestamp: prevWeekTs,
           customer_id: customerId,
         };
@@ -146,7 +153,7 @@ export async function POST() {
     );
 
     const prevWeekIngest = await fetch(
-      `${ORB_BASE}/events/ingest?backfill_id=${backfillId}&debug=true`,
+      `${ORB_BASE}/events/ingest?backfill_id=${backfill.id}&debug=true`,
       {
         method: "POST",
         headers: authHeaders,
@@ -154,8 +161,8 @@ export async function POST() {
       }
     ).then((r) => r.json());
 
-    // 3. Close the backfill to commit the events
-    await fetch(`${ORB_BASE}/events/backfills/${backfillId}/close`, {
+    // 3. Close the backfill to commit
+    await fetch(`${ORB_BASE}/events/backfills/${backfill.id}/close`, {
       method: "POST",
       headers: authHeaders,
     });
@@ -163,6 +170,7 @@ export async function POST() {
     return NextResponse.json({
       ok: true,
       licenseTypeId,
+      licenseGroupingKey,
       thisWeekIngested: thisWeekEvents.length,
       prevWeekIngested: prevWeekEvents.length,
       thisWeekIngest,
