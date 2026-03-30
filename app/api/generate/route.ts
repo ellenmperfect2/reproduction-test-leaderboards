@@ -77,17 +77,9 @@ export async function POST() {
     }, apiKey);
   }
 
-  // ── Step 3: build events with stable per-week timestamps ─────────────────────
-  // Using fixed timestamps (Monday 00:01 / Wednesday 12:00) means idempotency
-  // keys are identical on repeated clicks within the same week → duplicate detection.
-  const thisWeekMonday = getWeekStart(0);
-  const thisWeekTs = new Date(thisWeekMonday.getTime() + 60_000).toISOString(); // Mon 00:01 UTC
-
-  const prevWeekMonday = getWeekStart(1);
-  const prevWeekWed = new Date(prevWeekMonday);
-  prevWeekWed.setUTCDate(prevWeekMonday.getUTCDate() + 2);
-  prevWeekWed.setUTCHours(12, 0, 0, 0);
-  const prevWeekTs = prevWeekWed.toISOString();
+  // ── Step 3: build + ingest this week's events ────────────────────────────────
+  // Use now-30s so the timestamp is always within the account's grace period.
+  const thisWeekTs = new Date(Date.now() - 30_000).toISOString();
 
   const makeEvents = (users: typeof USERS, field: "thisWeek" | "lastWeek", ts: string) =>
     Promise.all(users.map(async user => {
@@ -95,13 +87,20 @@ export async function POST() {
       return { ...base, idempotency_key: await sha256(base) };
     }));
 
-  // ── Step 4: ingest this week ─────────────────────────────────────────────────
   const thisWeekEvents = await makeEvents(USERS, "thisWeek", thisWeekTs);
-  const { data: thisResult } = await orbPost("/events/ingest?debug=true", { events: thisWeekEvents }, apiKey);
+  const { data: thisResult } = await orbPost("/ingest?debug=true", { events: thisWeekEvents }, apiKey);
   const thisIngested = thisResult?.debug?.ingested?.length ?? 0;
   const thisDupes    = thisResult?.debug?.duplicate?.length ?? 0;
 
-  // ── Step 5: ingest last week via backfill ────────────────────────────────────
+  // ── Step 4: ingest last week via backfill ────────────────────────────────────
+  // Use Wednesday noon of last week as a stable timestamp so duplicate
+  // detection works on repeated clicks within the same week.
+  const prevWeekMonday = getWeekStart(1);
+  const prevWeekWed = new Date(prevWeekMonday);
+  prevWeekWed.setUTCDate(prevWeekMonday.getUTCDate() + 2);
+  prevWeekWed.setUTCHours(12, 0, 0, 0);
+  const prevWeekTs = prevWeekWed.toISOString();
+
   const prevWeekEnd = getWeekStart(0);
   const { ok: bfOk, data: bfData } = await orbPost("/events/backfills", {
     timeframe_start: prevWeekMonday.toISOString(),
@@ -113,7 +112,7 @@ export async function POST() {
   let prevDupes    = 0;
   if (bfOk && bfData.id) {
     const prevWeekEvents = await makeEvents(USERS, "lastWeek", prevWeekTs);
-    const { data: prevResult } = await orbPost(`/events/ingest?backfill_id=${bfData.id}&debug=true`, { events: prevWeekEvents }, apiKey);
+    const { data: prevResult } = await orbPost(`/ingest?backfill_id=${bfData.id}&debug=true`, { events: prevWeekEvents }, apiKey);
     prevIngested = prevResult?.debug?.ingested?.length ?? 0;
     prevDupes    = prevResult?.debug?.duplicate?.length ?? 0;
     await orbPost(`/events/backfills/${bfData.id}/close`, {}, apiKey);

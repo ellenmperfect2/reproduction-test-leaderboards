@@ -229,7 +229,7 @@ def main():
             events.append({**base, "idempotency_key": sha256(base)})
 
         # Ingest under backfill
-        _, result = post(f"/events/ingest?backfill_id={backfill_id}&debug=true", {"events": events}, allow_error=True)
+        _, result = post(f"/ingest?backfill_id={backfill_id}&debug=true", {"events": events}, allow_error=True)
         ingested = len(result.get("debug", {}).get("ingested", []))
         failed   = len(result.get("validation_failed", []))
         print(f"    {ingested} ingested, {failed} failed")
@@ -255,7 +255,7 @@ def main():
         }
         events.append({**base, "idempotency_key": sha256(base)})
 
-    _, result = post("/events/ingest?debug=true", {"events": events}, allow_error=True)
+    _, result = post("/ingest?debug=true", {"events": events}, allow_error=True)
     ingested = len(result.get("debug", {}).get("ingested", []))
     failed   = len(result.get("validation_failed", []))
     print(f"    {ingested} ingested, {failed} failed")

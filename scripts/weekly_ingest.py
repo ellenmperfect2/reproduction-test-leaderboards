@@ -148,7 +148,7 @@ def main():
         events.append({**base, "idempotency_key": sha256(base)})
         print(f"    {user['name']}: {credits:,} credits")
 
-    status, resp = orb_post("/events/ingest?debug=true", {"events": events})
+    status, resp = orb_post("/ingest?debug=true", {"events": events})
     ingested = len(resp.get("debug", {}).get("ingested", []))
     dupes    = len(resp.get("debug", {}).get("duplicate", []))
     failed   = len(resp.get("validation_failed", []))
