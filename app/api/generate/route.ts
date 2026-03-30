@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 export const maxDuration = 60;
 
 // Stable subscription — never recreated. Override via ORB_SUBSCRIPTION_ID env var.
-const SUBSCRIPTION_ID = process.env.ORB_SUBSCRIPTION_ID ?? "f9iEis3vsLkjnMmJ";
+const SUBSCRIPTION_ID = process.env.ORB_SUBSCRIPTION_ID ?? "BQ3XwoXSGrme9h4m";
 const ORB_BASE = "https://api.withorb.com/v1";
 const GROUPING_KEY = "user_name";
 
