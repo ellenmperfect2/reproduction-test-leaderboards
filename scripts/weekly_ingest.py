@@ -53,6 +53,9 @@ USERS = [
     {"name": "Sophie Dubois",    "base_credits":  40_000},
 ]
 
+# Must match the grouping_key used when the subscription was created
+GROUPING_KEY_OVERRIDE = "user_name"
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 AUTH = {"Authorization": f"Bearer {API_KEY}"}
@@ -109,6 +112,8 @@ def main():
     license_type_id, grouping_key = find_license_type(
         sub.get("plan", {}).get("prices", [])
     )
+    if GROUPING_KEY_OVERRIDE:
+        grouping_key = GROUPING_KEY_OVERRIDE
     if not license_type_id:
         raise SystemExit(
             "No license type found on subscription plan.\n"
