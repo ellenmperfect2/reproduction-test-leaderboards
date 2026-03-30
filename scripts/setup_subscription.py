@@ -96,32 +96,37 @@ def main():
     customer_id = sub["customer"]["id"]
     print(f"  customer_id: {customer_id}")
 
-    # ── 2. Billable metric ────────────────────────────────────────────────────
+    # ── 2. Items ──────────────────────────────────────────────────────────────
+    print("Creating items...")
+    _, seat_item = post("/items", {"name": f"Seats {ts}"})
+    item_id = seat_item["id"]
+    print(f"  seat item_id: {item_id}")
+
+    _, metric_item = post("/items", {"name": f"License API Calls {ts}"})
+    metric_item_id = metric_item["id"]
+    print(f"  metric item_id: {metric_item_id}")
+
+    # ── 3. Billable metric ────────────────────────────────────────────────────
     print("Looking for billable metric...")
     metrics = get("/metrics?limit=100")
-    metric = next(
+    existing_metric = next(
         (m for m in metrics.get("data", [])
-         if m.get("name") == "License API Calls" or m.get("event_name") == "license_api_call"),
+         if m.get("name") == "License API Calls"),
         None,
     )
-    if metric:
-        metric_id, metric_item_id = metric["id"], metric["item"]["id"]
+    if existing_metric:
+        metric_id = existing_metric["id"]
         print(f"  Found: {metric_id}")
     else:
         print("  Creating metric...")
         _, metric = post("/metrics", {
-            "name": "License API Calls", "event_name": "license_api_call",
-            "item_name": "License API Calls",
+            "name": "License API Calls",
+            "description": "Sum of credits from license API call events",
+            "item_id": metric_item_id,
             "sql": "SELECT SUM(credits) FROM events WHERE event_name = 'license_api_call'",
         })
-        metric_id, metric_item_id = metric["id"], metric["item"]["id"]
+        metric_id = metric["id"]
         print(f"  Created: {metric_id}")
-
-    # ── 3. Item ───────────────────────────────────────────────────────────────
-    print("Creating item...")
-    _, item = post("/items", {"name": f"Seats {ts}"})
-    item_id = item["id"]
-    print(f"  item_id: {item_id}")
 
     # ── 4. License type ───────────────────────────────────────────────────────
     print("Creating license type...")
