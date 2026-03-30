@@ -79,17 +79,28 @@ export async function POST() {
   const orbClient = new Orb({ apiKey });
   const ts = Math.floor(Date.now() / 1000);
 
-  // ── Step 1: resolve customer + subscription ──────────────────────────────────
-  let subscriptionId = process.env.ORB_SUBSCRIPTION_ID ?? SEED_SUBSCRIPTION_ID;
+  // ── Step 1: resolve customer ID from the seed subscription ──────────────────
+  // Always use SEED_SUBSCRIPTION_ID to look up the customer — it's stable.
+  // ORB_SUBSCRIPTION_ID (if set) is checked separately for license type config.
   let customerId: string;
+  {
+    const { ok, data } = await orbGet(`/subscriptions/${SEED_SUBSCRIPTION_ID}`, apiKey);
+    if (!ok) return NextResponse.json({ error: `Failed to fetch seed subscription: ${JSON.stringify(data)}` }, { status: 500 });
+    customerId = data.customer?.id;
+  }
+
+  // ── Step 2: check ORB_SUBSCRIPTION_ID for existing license type config ───────
+  let subscriptionId = SEED_SUBSCRIPTION_ID;
   let licenseConfig: LicenseTypeConfig | null = null;
   let needsEnvUpdate = false;
 
-  {
-    const { ok, data } = await orbGet(`/subscriptions/${subscriptionId}`, apiKey);
-    if (!ok) return NextResponse.json({ error: `Failed to fetch subscription: ${JSON.stringify(data)}` }, { status: 500 });
-    customerId = data.customer?.id;
-    licenseConfig = extractLicenseTypeConfig(data.plan?.prices ?? []);
+  const envSubId = process.env.ORB_SUBSCRIPTION_ID;
+  if (envSubId && envSubId !== SEED_SUBSCRIPTION_ID) {
+    const { ok, data } = await orbGet(`/subscriptions/${envSubId}`, apiKey);
+    if (ok) {
+      licenseConfig = extractLicenseTypeConfig(data.plan?.prices ?? []);
+      if (licenseConfig) subscriptionId = envSubId;
+    }
   }
 
   // ── Step 2: if no license type on existing plan, build one ───────────────────
