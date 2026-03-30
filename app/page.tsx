@@ -4,6 +4,7 @@ import AwardsRow from "@/components/leaderboard/AwardsRow";
 import LeaderboardTable from "@/components/leaderboard/LeaderboardTable";
 import ProgressSection from "@/components/leaderboard/ProgressSection";
 import DateRangePicker from "@/components/leaderboard/DateRangePicker";
+import GenerateButton from "@/components/leaderboard/GenerateButton";
 
 export const dynamic = "force-dynamic";
 
@@ -50,6 +51,7 @@ export default async function Page({
           weekLabel={data.weekLabel}
           isCurrentWeek={isCurrentWeek}
         />
+        <GenerateButton />
       </div>
 
       {/* Award cards */}
