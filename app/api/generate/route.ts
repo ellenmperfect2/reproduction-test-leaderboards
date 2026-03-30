@@ -63,16 +63,9 @@ export async function POST() {
 
   let licenseTypeId: string | null = null;
   for (const price of sub.plan?.prices ?? []) {
-    const candidates = [price, ...Object.values(price)];
-    for (const obj of candidates) {
-      if (obj && typeof obj === "object" && "license_type_configuration" in (obj as AnyJson)) {
-        const cfg = (obj as AnyJson).license_type_configuration;
-        if (cfg?.license_type_id) { licenseTypeId = cfg.license_type_id; break; }
-      }
-    }
-    if (licenseTypeId) break;
+    if (price?.license_type?.id) { licenseTypeId = price.license_type.id; break; }
   }
-  if (!licenseTypeId) return NextResponse.json({ error: "No license_type_configuration found on this subscription's plan." }, { status: 500 });
+  if (!licenseTypeId) return NextResponse.json({ error: "No license_type found on this subscription's plan." }, { status: 500 });
 
   // ── Step 2: ensure licenses exist (idempotent) ───────────────────────────────
   for (let i = 0; i < USERS.length; i++) {
